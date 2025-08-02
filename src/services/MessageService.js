@@ -1,0 +1,93 @@
+const { getDatabase } = require('../config/database');
+
+class MessageService {
+    /**
+     * Record a message in the database
+     */
+    static async recordMessage(params) {
+        const {
+            userId, chatJid, sender, text, direction, timestamp,
+            stanzaId, rawMessage, replyToId, quotedText, quotedSender, senderJid
+        } = params;
+        
+        try {
+            const supabase = getDatabase();
+            const { data, error } = await supabase
+                .from('messages')
+                .insert({
+                    user_id: userId,
+                    chat_jid: chatJid,
+                    sender: sender,
+                    message: text,
+                    direction: direction,
+                    timestamp: new Date(timestamp).toISOString(),
+                    stanza_id: stanzaId,
+                    raw_message: rawMessage,
+                    reply_to_id: replyToId,
+                    quoted_text: quotedText,
+                    quoted_sender: quotedSender,
+                    sender_jid: senderJid
+                })
+                .select()
+                .single();
+                
+            if (error) throw error;
+            return data;
+        } catch (err) {
+            console.error('Failed to record message:', err);
+            return null;
+        }
+    }
+
+    /**
+     * Get chat list for a user
+     */
+    static async getChats(userId) {
+        try {
+            const supabase = getDatabase();
+            const { data, error } = await supabase
+                .from('messages')
+                .select('id, chat_jid, message, timestamp, sender')
+                .eq('user_id', userId)
+                .order('timestamp', { ascending: false });
+                
+            if (error) throw error;
+            
+            // Aggregate last message per chat_jid
+            const chatMap = new Map();
+            for (const row of data) {
+                if (!chatMap.has(row.chat_jid)) {
+                    chatMap.set(row.chat_jid, row);
+                }
+            }
+            
+            return Array.from(chatMap.values());
+        } catch (error) {
+            console.error('Fetch chats error:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get messages for a specific chat
+     */
+    static async getChatMessages(userId, chatJid) {
+        try {
+            const supabase = getDatabase();
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('chat_jid', chatJid)
+                .order('timestamp', { ascending: true });
+                
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Fetch chat messages error:', error);
+            throw error;
+        }
+    }
+}
+
+module.exports = MessageService;

@@ -1,11 +1,26 @@
 {
   "name": "whatsapp-webhook-api",
   "version": "1.0.0",
-  "main": "whatsapp-service.js",
+  "main": "app.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16.0.0",
+    "bun": ">=1.0.0"
+  },
   "scripts": {
-    "start": "node whatsapp-service.js",
-    "dev": "node whatsapp-service.js",
-    "test": "jest"
+    "start": "node app.js",
+    "start:bun": "bun run app.js",
+    "start:legacy": "node whatsapp-service.js",
+    "start:legacy:bun": "bun run whatsapp-service.js",
+    "dev": "node app.js",
+    "dev:bun": "bun --hot app.js",
+    "dev:legacy": "node whatsapp-service.js",
+    "dev:legacy:bun": "bun --hot whatsapp-service.js",
+    "test": "jest",
+    "test:bun": "bun test",
+    "install:bun": "bun install",
+    "build": "echo 'No build step required'",
+    "lint": "echo 'Linting not configured yet'"
   },
   "keywords": [],
   "author": "",

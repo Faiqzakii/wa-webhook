@@ -829,7 +829,7 @@ io.on('connection', (socket) => {
 });
 
 // Server Initialization
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8181;
 if (!process.env.JEST_WORKER_ID) {
     server.listen(PORT, '0.0.0.0', () => {
         console.log(`WhatsApp service running on port ${PORT}`);
