@@ -219,6 +219,9 @@
                     statusIcon.className = 'ri-checkbox-circle-line text-green-600 text-xl';
                     connectionCard.style.display = 'none';
                     testBtn.disabled = false;
+                    if (document.getElementById('testInteractiveBtn')) {
+                        document.getElementById('testInteractiveBtn').disabled = false;
+                    }
                     waLogoutBtn.disabled = false;
                     if (!startTime || currentStatus !== 'connected') {
                         startTime = Date.now();
@@ -232,6 +235,9 @@
                     statusIcon.className = 'ri-qr-code-line text-yellow-600 text-xl';
                     connectionCard.style.display = 'block';
                     testBtn.disabled = true;
+                    if (document.getElementById('testInteractiveBtn')) {
+                        document.getElementById('testInteractiveBtn').disabled = true;
+                    }
                     waLogoutBtn.disabled = true;
                     break;
                 case 'disconnected':
@@ -243,6 +249,9 @@
                     statusIcon.className = 'ri-close-circle-line text-red-600 text-xl';
                     connectionCard.style.display = 'none';
                     testBtn.disabled = true;
+                    if (document.getElementById('testInteractiveBtn')) {
+                        document.getElementById('testInteractiveBtn').disabled = true;
+                    }
                     waLogoutBtn.disabled = true;
                     break;
             }
@@ -379,6 +388,72 @@
                 showActionStatus('Message sent successfully!', 'success');
             } else {
                 showActionStatus('Error: ' + (result.error || 'Failed to send message'), 'error');
+            }
+        } catch (error) {
+            showActionStatus('Error: ' + error.message, 'error');
+        }
+    }
+
+    /* Test Interactive Message - Format Baileys Itsukichann */
+    async function testInteractiveMessage() {
+        const phoneNumber = prompt('Masukkan nomor WhatsApp (contoh: 6281234567890):');
+        if (!phoneNumber) return;
+        const finalPhone = phoneNumber.startsWith('08') ? phoneNumber.replace(/^08/, '628') : phoneNumber;
+
+        showActionStatus('Mengirim pesan interaktif...', 'info');
+
+        try {
+            const response = await fetch('/send-interactive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    to: finalPhone,
+                    text: 'This is an Interactive message!',
+                    title: 'Hiii',
+                    subtitle: 'There is a subtitle',
+                    footer: 'Hello World!',
+                    interactiveButtons: [
+                        {
+                            name: 'quick_reply',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: 'Click Me!',
+                                id: 'your_id'
+                            })
+                        },
+                        {
+                            name: 'cta_url',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: 'Follow Me',
+                                url: 'https://whatsapp.com/channel/0029Vag9VSI2ZjCocqa2lB1y',
+                                merchant_url: 'https://whatsapp.com/channel/0029Vag9VSI2ZjCocqa2lB1y'
+                            })
+                        },
+                        {
+                            name: 'cta_copy',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: 'Copy Link',
+                                copy_code: 'https://whatsapp.com/channel/0029Vag9VSI2ZjCocqa2lB1y'
+                            })
+                        },
+                        {
+                            name: 'cta_call',
+                            buttonParamsJson: JSON.stringify({
+                                display_text: 'Call Me!',
+                                phone_number: finalPhone
+                            })
+                        }
+                    ]
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showActionStatus('Pesan interaktif berhasil dikirim!', 'success');
+            } else {
+                showActionStatus('Error: ' + (result.error || 'Gagal mengirim pesan interaktif'), 'error');
             }
         } catch (error) {
             showActionStatus('Error: ' + error.message, 'error');
