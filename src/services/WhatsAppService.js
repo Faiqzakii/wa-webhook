@@ -78,7 +78,7 @@ class WhatsAppService {
         const sock = makeWASocket({
             auth: state,
             printQRInTerminal: false,
-            browser: ['WhatsApp API', 'Chrome', '1.0.0'],
+            browser: ['Ubuntu', 'Chrome', '20.0.04'],
             keepAliveIntervalMs: config.whatsapp.keepAliveIntervalMs,
             markOnlineOnConnect: config.whatsapp.markOnlineOnConnect
         });
