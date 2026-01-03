@@ -447,6 +447,20 @@ class WhatsAppService {
             throw new Error('Session not initialized');
         }
 
+        // Wait for connection to be ready
+        let attempts = 0;
+        while (attempts < 20) {
+            if (session.sock.ws && session.sock.ws.isOpen) {
+                break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 500));
+            attempts++;
+        }
+
+        if (!session.sock.ws || !session.sock.ws.isOpen) {
+            throw new Error('Connection to WhatsApp server failed, please try again');
+        }
+
         const code = await session.sock.requestPairingCode(phoneNumber);
         return code;
     }
