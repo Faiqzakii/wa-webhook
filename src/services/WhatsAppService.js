@@ -1,4 +1,8 @@
 import { default as makeWASocket, DisconnectReason, useMultiFileAuthState, generateWAMessageFromContent, proto } from '@whiskeysockets/baileys';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const buttonsWarpper = require('buttons-warpper');
+const initFunction = buttonsWarpper.default || buttonsWarpper;
 import { existsSync, rmSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -82,6 +86,9 @@ class WhatsAppService {
             keepAliveIntervalMs: config.whatsapp.keepAliveIntervalMs,
             markOnlineOnConnect: config.whatsapp.markOnlineOnConnect
         });
+
+        /* Initialize buttons-warpper for enhanced interactive buttons */
+        await initFunction(sock);
 
         session.sock = sock;
         this.setupSessionHandlers(session, userIdStr, saveCreds, authDir);
@@ -466,32 +473,31 @@ class WhatsAppService {
     }
 
     async sendInteractiveMessage(userId, to, content) {
+        console.log(`[WhatsAppService] sendInteractiveMessage start for user: ${userId}`);
         const session = await this.ensureSession(userId);
         if (!session.isConnected) {
             throw new Error('WhatsApp not connected');
         }
 
         const phone = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+        console.log(`[WhatsAppService] Target JID: ${phone}`);
 
-        const msg = generateWAMessageFromContent(phone, {
-            viewOnceMessage: {
-                message: {
-                    messageContextInfo: {
-                        deviceListMetadata: {},
-                        deviceListMetadataVersion: 2
-                    },
-                    interactiveMessage: {
-                        body: { text: content.text },
-                        footer: { text: content.footer },
-                        header: { title: content.title, subtitle: content.subtitle, hasMediaAttachment: false },
-                        nativeFlowMessage: { buttons: content.interactiveButtons }
-                    }
-                }
-            }
-        }, {});
-
-        await session.sock.relayMessage(phone, msg.message, { messageId: msg.key.id });
-        return msg;
+        /* Use buttons-warpper enhanced method for better compatibility */
+        console.log(`[WhatsAppService] Using buttons-warpper sendInteractiveMessage...`);
+        try {
+            const msg = await session.sock.sendInteractiveMessage(phone, {
+                text: content.text || '',
+                footer: content.footer || '',
+                title: content.title || '',
+                subtitle: content.subtitle || '',
+                interactiveButtons: content.interactiveButtons || []
+            });
+            console.log(`[WhatsAppService] Message sent successfully via buttons-warpper`);
+            return msg;
+        } catch (err) {
+            console.error(`[WhatsAppService] Failed to send via buttons-warpper:`, err);
+            throw err;
+        }
     }
 }
 
