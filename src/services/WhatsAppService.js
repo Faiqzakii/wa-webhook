@@ -41,6 +41,9 @@ class WhatsAppService {
                 return acc;
             }, {});
 
+            // Log settings loaded
+            console.log('App settings loaded:', Object.keys(this.appSettings));
+
             // Load auto-replies
             const repliesData = await AutoReply.find({});
             this.autoReplies = repliesData;
@@ -76,6 +79,7 @@ class WhatsAppService {
             isConnected: false,
             state: 'disconnected',
             qr: null,
+            startTime: null,
             keepAliveTimer: null
         };
 
@@ -147,7 +151,14 @@ class WhatsAppService {
             session.isConnected = true;
             session.state = 'connected';
             session.qr = null;
-            this.io.to(userId).emit('connection_status', { status: 'connected' });
+            // Set start time only if not already set or if reconnecting from disconnected state
+            if (!session.startTime) {
+                session.startTime = Date.now();
+            }
+            this.io.to(userId).emit('connection_status', {
+                status: 'connected',
+                startTime: session.startTime
+            });
             console.log(`WhatsApp connected for user: ${userId}`);
             if (this.webhookService && this.appSettings.webhook_toggle_connection !== 'false') {
                 this.webhookService.send('connection_status', { userId, status: 'connected' });
@@ -157,6 +168,7 @@ class WhatsAppService {
         if (connection === 'close') {
             session.isConnected = false;
             session.state = 'disconnected';
+            session.startTime = null;
             this.io.to(userId).emit('connection_status', { status: 'disconnected' });
             if (this.webhookService && this.appSettings.webhook_toggle_connection !== 'false') {
                 this.webhookService.send('connection_status', { userId, status: 'disconnected' });
@@ -420,7 +432,8 @@ class WhatsAppService {
         return {
             status: session.state,
             connected: session.isConnected,
-            qr: session.qr
+            qr: session.qr,
+            startTime: session.startTime
         };
     }
 
@@ -497,6 +510,26 @@ class WhatsAppService {
         } catch (err) {
             console.error(`[WhatsAppService] Failed to send via buttons-warpper:`, err);
             throw err;
+        }
+    }
+
+    /**
+     * Get count of messages for today
+     */
+    async getTodayMessageCount(userId) {
+        try {
+            const startOfDay = new Date();
+            startOfDay.setHours(0, 0, 0, 0);
+
+            const count = await Message.countDocuments({
+                userId: userId,
+                timestamp: { $gte: startOfDay }
+            });
+
+            return count;
+        } catch (error) {
+            console.error('Error getting message count:', error);
+            return 0;
         }
     }
 }

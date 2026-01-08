@@ -34,7 +34,7 @@
     let currentStatus = 'disconnected';
     let messages = [];
     let currentConnectionMethod = 'qr'; // Default prioritize QR method
-    let startTime = Date.now();
+    let startTime = null;
     let messageCount = 0;
 
     // DOM elements
@@ -110,7 +110,7 @@
     setInterval(updateMetrics, 1000);
 
     function updateMetrics() {
-        if (currentStatus === 'connected' && uptimeElement) {
+        if (currentStatus === 'connected' && uptimeElement && startTime) {
             const uptime = Math.floor((Date.now() - startTime) / 1000);
             const hours = Math.floor(uptime / 3600);
             const minutes = Math.floor((uptime % 3600) / 60);
@@ -182,7 +182,7 @@
 
     socket.on('connection_status', (data) => {
         console.log('Connection status:', data);
-        updateStatus(data.status);
+        updateStatus(data.status, data);
     });
 
     socket.on('new_message', (message) => {
@@ -202,8 +202,24 @@
 
 
 
-    function updateStatus(status) {
+    function updateStatus(status, data = {}) {
         currentStatus = status;
+
+        if (data.startTime) {
+            startTime = data.startTime;
+        } else if (status === 'connected' && !startTime) {
+            // Fallback if no start time provided but connected
+            // Only set if not already set to avoid reset on refresh if variable persisted (which it won't here, but good practice)
+            // Actually, if we refresh, startTime is null. If server doesn't send it, we might reset.
+            // But server SHOULD send it now.
+            if (!startTime) startTime = Date.now();
+        } else if (status !== 'connected') {
+            startTime = null;
+        }
+
+        if (data.messageCount !== undefined) {
+            messageCount = data.messageCount;
+        }
 
         // Update status indicator and icon
         if (statusIndicator && statusIcon) {
@@ -221,9 +237,7 @@
                     testBtn.disabled = false;
 
                     waLogoutBtn.disabled = false;
-                    if (!startTime || currentStatus !== 'connected') {
-                        startTime = Date.now();
-                    }
+                    // Start time is now handled by server/updateStatus
                     break;
                 case 'qr_ready':
                     statusElement.textContent = 'Scan QR';
@@ -336,7 +350,7 @@
             const response = await fetch('/status');
             const data = await response.json();
 
-            updateStatus(data.status);
+            updateStatus(data.status, data);
 
             if (data.qr) {
                 displayQR(data.qr);
@@ -414,6 +428,7 @@
                 showActionStatus('Logged out from WhatsApp successfully.', 'success');
                 updateStatus('disconnected');
                 messageCount = 0;
+                if (messageCountElement) messageCountElement.textContent = messageCount;
             } else {
                 showActionStatus('Error: ' + (result.error || 'Failed to log out from WhatsApp.'), 'error');
             }

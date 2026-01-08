@@ -12,8 +12,12 @@ router.get('/status', isAuthenticatedOrApiKey, async (req, res) => {
         const whatsappService = req.app.get('whatsappService');
         await whatsappService.ensureSession(userId);
         const status = whatsappService.getSessionStatus(userId);
+        const messageCount = await whatsappService.getTodayMessageCount(userId);
 
-        res.json(status);
+        res.json({
+            ...status,
+            messageCount
+        });
     } catch (error) {
         console.error('Status route error:', error);
         res.status(500).json({
