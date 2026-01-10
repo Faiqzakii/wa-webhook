@@ -24,6 +24,7 @@ const runtime = {
 // Import services
 import WhatsAppService from './src/services/WhatsAppService.js';
 import WebhookService from './src/services/WebhookService.js';
+import SchedulerService from './src/services/SchedulerService.js';
 import { getMany } from './src/services/SettingsService.js';
 
 // Import routes
@@ -35,6 +36,7 @@ import autoReplyRoutes from './src/routes/autoReply.js';
 import apiKeyRoutes from './src/routes/apiKeys.js';
 import settingsRoutes from './src/routes/settings.js';
 import userRoutes from './src/routes/users.js';
+import scheduledMessagesRoutes from './src/routes/scheduledMessages.js';
 
 // Import utilities
 import { info, error as _error, warn } from './src/utils/logger.js';
@@ -45,6 +47,7 @@ class Application {
         this.server = createServer(this.app);
         this.io = null;
         this.whatsappService = null;
+        this.schedulerService = null;
     }
 
     /**
@@ -108,7 +111,7 @@ class Application {
         }));
         
         this.app.use(urlencoded({ extended: true }));
-        this.app.use(cookieParser());
+        this.app.use(cookieParser(config.session.secret));
 
         // Request logging middleware
         this.app.use((req, res, next) => {
@@ -175,6 +178,11 @@ class Application {
         // Attach webhooks to WhatsAppService
         this.whatsappService.setWebhookService(this.webhookService);
 
+        // Setup Scheduler service
+        this.schedulerService = new SchedulerService(this.whatsappService);
+        this.app.set('schedulerService', this.schedulerService);
+        this.schedulerService.start();
+
         info('WhatsApp service configured');
     }
 
@@ -205,6 +213,9 @@ class Application {
         
         // User management routes
         this.app.use('/users', userRoutes);
+        
+        // Scheduled messages routes
+        this.app.use('/scheduled-messages', scheduledMessagesRoutes);
 
         info('Routes configured');
     }
@@ -313,6 +324,11 @@ class Application {
      */
     async shutdown() {
         info('Shutting down server...');
+        
+        // Stop scheduler
+        if (this.schedulerService) {
+            this.schedulerService.stop();
+        }
         
         // Close server
         this.server.close(() => {

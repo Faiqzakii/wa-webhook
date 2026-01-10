@@ -8,17 +8,35 @@ import ApiKey from '../models/ApiKey.js';
  * Middleware to check if user is authenticated via session cookie
  */
 async function isAuthenticated(req, res, next) {
-    const token = req.cookies['auth-token'];
+    const token = req.signedCookies['auth-token'];
+    
+    // Check if it's an API request
+    const isApiRequest = req.path.startsWith('/api/') || 
+                         req.path.includes('/send-message') || 
+                         req.path.includes('/send-bulk');
+
     if (!token) {
+        if (isApiRequest) {
+            return res.status(401).json({
+                error: 'unauthorized',
+                message: 'Authentication token is missing'
+            });
+        }
         return res.redirect('/login');
     }
     
     try {
         const decoded = jwt.verify(token, config.session.secret);
-        const user = await User.findById(decoded.userId);
+        const user = await User.findById(decoded.userId).select('-password');
 
         if (!user) {
             res.clearCookie('auth-token');
+            if (isApiRequest) {
+                return res.status(401).json({
+                    error: 'unauthorized',
+                    message: 'User no longer exists'
+                });
+            }
             return res.redirect('/login');
         }
         
@@ -32,7 +50,36 @@ async function isAuthenticated(req, res, next) {
     } catch (error) {
         console.error('Authentication error:', error);
         res.clearCookie('auth-token');
+        
+        if (isApiRequest) {
+            const message = error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token';
+            return res.status(401).json({
+                error: 'unauthorized',
+                message
+            });
+        }
         return res.redirect('/login');
+    }
+}
+
+/**
+ * Middleware to redirect to dashboard if already authenticated
+ */
+async function redirectIfAuthenticated(req, res, next) {
+    const token = req.signedCookies['auth-token'];
+    if (!token) {
+        return next();
+    }
+
+    try {
+        const decoded = jwt.verify(token, config.session.secret);
+        const user = await User.findById(decoded.userId);
+        if (user) {
+            return res.redirect('/dashboard');
+        }
+        next();
+    } catch (error) {
+        next();
     }
 }
 
@@ -94,6 +141,7 @@ function isAdmin(req, res, next) {
 export {
     isAuthenticated,
     isAuthenticatedOrApiKey,
+    redirectIfAuthenticated,
     verifyApiKey,
     getEffectiveUserId,
     isAdmin

@@ -82,9 +82,12 @@ class WhatsAppService {
         const sock = makeWASocket({
             auth: state,
             printQRInTerminal: false,
-            browser: ['Ubuntu', 'Chrome', '20.0.04'],
+            browser: ['Mac OS', 'Safari', '17.2.1'],
             keepAliveIntervalMs: config.whatsapp.keepAliveIntervalMs,
-            markOnlineOnConnect: config.whatsapp.markOnlineOnConnect
+            markOnlineOnConnect: config.whatsapp.markOnlineOnConnect,
+            // Add some timeout settings
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 0
         });
 
         /* Initialize buttons-warpper for enhanced interactive buttons */
@@ -155,6 +158,10 @@ class WhatsAppService {
         }
 
         if (connection === 'close') {
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const reason = lastDisconnect?.error?.message;
+            console.log(`WhatsApp connection closed for user ${userId}. Status: ${statusCode}, Reason: ${reason}`);
+
             session.isConnected = false;
             session.state = 'disconnected';
             this.io.to(userId).emit('connection_status', { status: 'disconnected' });
@@ -167,10 +174,10 @@ class WhatsAppService {
             }
             this.sessions.delete(userId);
 
-            const code = lastDisconnect?.error?.output?.statusCode;
-            const loggedOut = code === DisconnectReason.loggedOut;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            if (loggedOut) {
+            if (statusCode === DisconnectReason.loggedOut) {
+                console.log(`Intentional logout detected for user ${userId}; clearing session.`);
                 try {
                     if (existsSync(authDir)) {
                         rmSync(authDir, { recursive: true, force: true });
@@ -180,11 +187,13 @@ class WhatsAppService {
                 }
             }
 
-            // Reconnect after delay unless user intentionally logged out
-            if (!loggedOut) {
-                setTimeout(() => this.createSession(userId), 1000);
+            // Reconnect if not a logout
+            if (shouldReconnect) {
+                const delay = statusCode === DisconnectReason.restartRequired ? 0 : 3000;
+                console.log(`Reconnecting for user ${userId} in ${delay}ms...`);
+                setTimeout(() => this.createSession(userId), delay);
             } else {
-                console.log('Intentional logout detected; skipping auto-reconnect.');
+                console.log(`Skipping reconnect for user ${userId} due to intentional logout.`);
             }
         }
     }

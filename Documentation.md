@@ -10,6 +10,7 @@ Dokumentasi ini memberikan panduan teknis mendalam tentang cara berinteraksi den
 3. [Integrasi Webhook](#3-integrasi-webhook)
 4. [Balas Otomatis (Auto-Reply)](#4-balas-otomatis-auto-reply)
 5. [Manajemen User](#5-manajemen-user)
+6. [Pesan Interaktif dengan Button](#pesan-interaktif-dengan-button)
 
 ---
 
@@ -78,6 +79,66 @@ Mengirim pesan teks ke satu nomor tujuan.
   }
   ```
 
+### 2.3 Kirim Pesan dengan Button (Interactive Message)
+Mengirim pesan interaktif dengan tombol untuk memudahkan pengguna berinteraksi.
+
+- **URL**: `POST /send-interactive`
+- **Body** (Message Buttons):
+  ```json
+  {
+    "to": "6281234567890",
+    "text": "Pilih opsi di bawah:",
+    "footer": "Silakan pilih salah satu",
+    "interactiveButtons": [
+      {
+        "name": "quick_reply",
+        "buttonParamsJson": "{\"display_text\":\"Ya\",\"id\":\"btn_1\"}"
+      },
+      {
+        "name": "quick_reply",
+        "buttonParamsJson": "{\"display_text\":\"Tidak\",\"id\":\"btn_2\"}"
+      },
+      {
+        "name": "quick_reply",
+        "buttonParamsJson": "{\"display_text\":\"Nanti\",\"id\":\"btn_3\"}"
+      }
+    ]
+  }
+  ```
+
+- **Body** (List Message):
+  ```json
+  {
+    "to": "6281234567890",
+    "text": "Silakan pilih menu:",
+    "title": "Menu Utama",
+    "footer": "Pilih dari list di bawah",
+    "interactiveButtons": [
+      {
+        "name": "single_select",
+        "buttonParamsJson": "{\"title\":\"Lihat Opsi\",\"sections\":[{\"title\":\"Layanan Kami\",\"rows\":[{\"header\":\"Produk\",\"title\":\"Produk\",\"description\":\"Lihat katalog produk kami\",\"id\":\"service_1\"},{\"header\":\"Layanan\",\"title\":\"Layanan\",\"description\":\"Layanan yang kami tawarkan\",\"id\":\"service_2\"}]}]}"
+      }
+    ]
+  }
+  ```
+
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "messageId": "ABC456DEF",
+    "to": "6281234567890",
+    "type": "button",
+    "timestamp": 1735460000000
+  }
+  ```
+
+**Catatan**:
+- Maximum 3 buttons untuk quick_reply buttons
+- `buttonParamsJson` harus berupa string JSON yang valid
+- Button ID (`id` dalam buttonParamsJson) digunakan untuk tracking respon pada webhook
+- Untuk list message, gunakan `name: "single_select"` dengan sections dan rows dalam buttonParamsJson
+
 ---
 
 ## 3. Integrasi Webhook
@@ -100,7 +161,40 @@ Data dikirimkan menggunakan metode `POST` dengan format:
 ### 3.3 Jenis Event
 - `message.in`: Pesan teks masuk.
 - `message.out`: Pesan terkirim dari sistem atau perangkat.
+- `interaction.button`: Pengguna menekan tombol pada pesan interaktif.
+- `interaction.list`: Pengguna memilih opsi dari list message.
 - `connection.update`: Perubahan status koneksi (connected, disconnected).
+
+### 3.3.1 Payload Event Button Response
+Contoh payload saat pengguna menekan tombol:
+```json
+{
+  "event": "interaction.button",
+  "data": {
+    "from": "6281234567890",
+    "messageId": "ABC456DEF",
+    "buttonId": "btn_1",
+    "buttonText": "Ya",
+    "timestamp": 1735460000000
+  }
+}
+```
+
+### 3.3.2 Payload Event List Response
+Contoh payload saat pengguna memilih dari list:
+```json
+{
+  "event": "interaction.list",
+  "data": {
+    "from": "6281234567890",
+    "messageId": "ABC456DEF",
+    "rowId": "service_1",
+    "rowTitle": "Produk",
+    "rowDescription": "Lihat katalog produk kami",
+    "timestamp": 1735460000000
+  }
+}
+```
 
 ### 3.4 Verifikasi Tanda Tangan (Signature)
 Jika Anda mengatur **Webhook Secret**, setiap request akan menyertakan header `X-Signature`. Gunakan ini untuk memastikan data berasal dari server yang sah.
@@ -140,4 +234,91 @@ Sistem ini mendukung multi-user dengan pembagian peran (role):
 
 ---
 
-*Dokumentasi ini dibuat untuk versi 1.0.0. Jika ada pertanyaan lebih lanjut, silakan hubungi tim dukungan.*
+## 6. Pesan Interaktif dengan Button
+
+Fitur pesan interaktif memungkinkan Anda mengirim pesan dengan tombol atau list pilihan, meningkatkan engagement pengguna dan menyederhanakan response options.
+
+### 6.1 Jenis Interactive Message
+
+#### 6.1.1 Button Message
+Pesan dengan tombol pilihan (maksimal 3 tombol). Cocok untuk:
+- Konfirmasi (Ya/Tidak)
+- Pilihan sederhana
+- Feedback rating
+
+#### 6.1.2 List Message
+Pesan dengan list opsi dalam dropdown. Cocok untuk:
+- Menu dengan banyak opsi
+- Katalog produk
+- Form dengan field pilihan
+
+### 6.2 Best Practices
+
+1. **Button Text**: Gunakan teks singkat dan jelas (maksimal 20 karakter per tombol)
+2. **Button ID**: Gunakan ID yang deskriptif untuk tracking, contoh: `order_confirm`, `feedback_positive`
+3. **Main Text**: Berikan konteks yang jelas sebelum tombol muncul
+4. **Timeout**: Tangani timeout jika user tidak merespon dalam waktu tertentu
+
+### 6.3 Contoh Use Cases
+
+#### Flow Konfirmasi Pesanan
+```bash
+# Kirim pesan konfirmasi
+POST /send-interactive
+{
+  "to": "6281234567890",
+  "type": "button",
+  "text": "Apakah Anda ingin melanjutkan pesanan?",
+  "buttons": [
+    { "id": "order_yes", "text": "Ya, Lanjut" },
+    { "id": "order_no", "text": "Batalkan" },
+    { "id": "order_later", "text": "Nanti Saja" }
+  ]
+}
+
+# Webhook menerima response:
+# - order_yes: Lanjut ke pembayaran
+# - order_no: Batalkan pesanan
+# - order_later: Simpan ke cart
+```
+
+#### Menu Layanan Pelanggan
+```bash
+POST /send-interactive
+{
+  "to": "6281234567890",
+  "type": "list",
+  "text": "Apa yang bisa kami bantu?",
+  "title": "Layanan Pelanggan",
+  "buttonText": "Pilih Menu",
+  "sections": [
+    {
+      "title": "Bantuan",
+      "rows": [
+        { "id": "help_order", "title": "Cek Pesanan", "description": "Lihat status pesanan terakhir" },
+        { "id": "help_product", "title": "Info Produk", "description": "Tanya tentang produk" },
+        { "id": "help_shipping", "title": "Info Pengiriman", "description": "Cek status pengiriman" },
+        { "id": "help_return", "title": "Pengembalian", "description": "Proses retur barang" }
+      ]
+    }
+  ]
+}
+```
+
+### 6.4 Error Handling
+
+Kode error yang mungkin:
+- `400`: Bad Request (format invalid, jumlah button > 3)
+- `404`: Contact tidak ditemukan
+- `500`: Internal Server Error
+
+Contoh error response:
+```json
+{
+  "success": false,
+  "error": "BUTTON_LIMIT_EXCEEDED",
+  "message": "Maximum 3 buttons allowed per message"
+}
+```
+
+*Dokumentasi ini dibuat untuk versi 2.0.0. Jika ada pertanyaan lebih lanjut, silakan hubungi tim dukungan.*
