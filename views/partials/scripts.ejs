@@ -370,35 +370,306 @@
     }
 
     async function testMessage() {
-        const phoneNumber = prompt('Enter WhatsApp number (e.g., 6281234567890):');
+        // Ask for phone number with SweetAlert
+        const { value: phoneNumber } = await Swal.fire({
+            title: 'Nomor WhatsApp',
+            input: 'text',
+            inputPlaceholder: '6281234567890 atau 08123456789',
+            inputAttributes: {
+                autocapitalize: 'off',
+                autocorrect: 'off'
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Lanjut',
+            cancelButtonText: 'Batal',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'Nomor WhatsApp harus diisi!';
+                }
+                if (!/^(62|08)\d{8,13}$/.test(value)) {
+                    return 'Format nomor tidak valid!';
+                }
+            }
+        });
+
         if (!phoneNumber) return;
         const finalPhone = phoneNumber.startsWith('08') ? phoneNumber.replace(/^08/, '628') : phoneNumber;
-        const message = prompt('Enter test message:', 'Hello from WhatsApp API!');
-        if (!message) return;
+        
+        // Ask user to choose message type
+        const { value: messageType } = await Swal.fire({
+            title: 'Pilih Tipe Pesan',
+            input: 'select',
+            inputOptions: {
+                'text': 'Pesan Teks Biasa',
+                'button': 'Pesan dengan Button (max 3)',
+                'list': 'Pesan dengan List'
+            },
+            inputPlaceholder: 'Pilih tipe pesan',
+            showCancelButton: true,
+            confirmButtonText: 'Lanjut',
+            cancelButtonText: 'Batal'
+        });
 
-        showActionStatus('Sending test message...', 'info');
+        if (!messageType) return;
 
-        try {
-            const response = await fetch('/send-message', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    to: finalPhone,
-                    message: message
-                })
+        if (messageType === 'text') {
+            // Send regular text message
+            const { value: message } = await Swal.fire({
+                title: 'Pesan Teks',
+                input: 'textarea',
+                inputPlaceholder: 'Ketik pesan Anda di sini...',
+                inputValue: 'Hello from WhatsApp API!',
+                showCancelButton: true,
+                confirmButtonText: 'Kirim',
+                cancelButtonText: 'Batal',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return 'Pesan tidak boleh kosong!';
+                    }
+                }
             });
 
-            const result = await response.json();
+            if (!message) return;
 
-            if (response.ok) {
-                showActionStatus('Message sent successfully!', 'success');
-            } else {
-                showActionStatus('Error: ' + (result.error || 'Failed to send message'), 'error');
+            showActionStatus('Sending test message...', 'info');
+
+            try {
+                const response = await fetch('/send-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        to: finalPhone,
+                        message: message
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showActionStatus('Message sent successfully!', 'success');
+                } else {
+                    showActionStatus('Error: ' + (result.error || 'Failed to send message'), 'error');
+                }
+            } catch (error) {
+                showActionStatus('Error: ' + error.message, 'error');
             }
-        } catch (error) {
-            showActionStatus('Error: ' + error.message, 'error');
+        } else if (messageType === 'button') {
+            // Send button message
+            const { value: formValues } = await Swal.fire({
+                title: 'Pesan dengan Button',
+                html: `
+                    <div class="text-left space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Teks Pesan</label>
+                            <textarea id="buttonText" class="swal2-input w-full" placeholder="Silakan pilih opsi di bawah:" rows="2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Button 1 (Required)</label>
+                            <input id="btn1" class="swal2-input" placeholder="Ya" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Button 2 (Optional)</label>
+                            <input id="btn2" class="swal2-input" placeholder="Tidak">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Button 3 (Optional)</label>
+                            <input id="btn3" class="swal2-input" placeholder="Nanti">
+                        </div>
+                    </div>
+                `,
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: 'Kirim',
+                cancelButtonText: 'Batal',
+                preConfirm: () => {
+                    const text = document.getElementById('buttonText').value;
+                    const btn1 = document.getElementById('btn1').value;
+                    const btn2 = document.getElementById('btn2').value;
+                    const btn3 = document.getElementById('btn3').value;
+
+                    if (!text || !btn1) {
+                        Swal.showValidationMessage('Teks pesan dan button 1 wajib diisi');
+                        return false;
+                    }
+
+                    return { text, btn1, btn2, btn3 };
+                }
+            });
+
+            if (!formValues) return;
+
+            showActionStatus('Sending button message...', 'info');
+
+            const interactiveButtons = [
+                { 
+                    name: 'quick_reply', 
+                    buttonParamsJson: JSON.stringify({
+                        display_text: formValues.btn1,
+                        id: 'btn_1'
+                    })
+                }
+            ];
+            if (formValues.btn2) {
+                interactiveButtons.push({ 
+                    name: 'quick_reply', 
+                    buttonParamsJson: JSON.stringify({
+                        display_text: formValues.btn2,
+                        id: 'btn_2'
+                    })
+                });
+            }
+            if (formValues.btn3) {
+                interactiveButtons.push({ 
+                    name: 'quick_reply', 
+                    buttonParamsJson: JSON.stringify({
+                        display_text: formValues.btn3,
+                        id: 'btn_3'
+                    })
+                });
+            }
+
+            try {
+                const response = await fetch('/send-interactive', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        to: finalPhone,
+                        text: formValues.text,
+                        footer: 'Silakan pilih salah satu',
+                        interactiveButtons: interactiveButtons
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showActionStatus('Button message sent successfully!', 'success');
+                } else {
+                    showActionStatus('Error: ' + (result.error || 'Failed to send button message'), 'error');
+                }
+            } catch (error) {
+                showActionStatus('Error: ' + error.message, 'error');
+            }
+        } else if (messageType === 'list') {
+            // Send list message
+            const { value: formValues } = await Swal.fire({
+                title: 'Pesan dengan List',
+                html: `
+                    <div class="text-left space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Teks Pesan</label>
+                            <textarea id="listText" class="swal2-input w-full" placeholder="Silakan pilih menu:" rows="2"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Judul List</label>
+                            <input id="listTitle" class="swal2-input" placeholder="Menu Utama" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Teks Tombol</label>
+                            <input id="buttonText" class="swal2-input" placeholder="Pilih Menu" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Option 1 Title</label>
+                            <input id="opt1Title" class="swal2-input" placeholder="Produk" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Option 1 Description</label>
+                            <input id="opt1Desc" class="swal2-input" placeholder="Lihat katalog produk">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Option 2 Title</label>
+                            <input id="opt2Title" class="swal2-input" placeholder="Layanan">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Option 2 Description</label>
+                            <input id="opt2Desc" class="swal2-input" placeholder="Layanan kami">
+                        </div>
+                    </div>
+                `,
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: 'Kirim',
+                cancelButtonText: 'Batal',
+                width: '600px',
+                preConfirm: () => {
+                    const text = document.getElementById('listText').value;
+                    const title = document.getElementById('listTitle').value;
+                    const buttonText = document.getElementById('buttonText').value;
+                    const opt1Title = document.getElementById('opt1Title').value;
+                    const opt1Desc = document.getElementById('opt1Desc').value;
+                    const opt2Title = document.getElementById('opt2Title').value;
+                    const opt2Desc = document.getElementById('opt2Desc').value;
+
+                    if (!text || !title || !buttonText || !opt1Title) {
+                        Swal.showValidationMessage('Teks pesan, judul, teks tombol, dan option 1 wajib diisi');
+                        return false;
+                    }
+
+                    return { text, title, buttonText, opt1Title, opt1Desc, opt2Title, opt2Desc };
+                }
+            });
+
+            if (!formValues) return;
+
+            showActionStatus('Sending list message...', 'info');
+
+            const rows = [
+                { 
+                    header: formValues.opt1Title,
+                    title: formValues.opt1Title, 
+                    description: formValues.opt1Desc || '',
+                    id: 'opt_1'
+                }
+            ];
+            if (formValues.opt2Title) {
+                rows.push({ 
+                    header: formValues.opt2Title,
+                    title: formValues.opt2Title, 
+                    description: formValues.opt2Desc || '',
+                    id: 'opt_2'
+                });
+            }
+
+            const buttonParamsJson = JSON.stringify({
+                title: formValues.buttonText,
+                sections: [{
+                    title: 'Options',
+                    rows: rows
+                }]
+            });
+
+            try {
+                const response = await fetch('/send-interactive', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        to: finalPhone,
+                        text: formValues.text,
+                        title: formValues.title,
+                        footer: 'Pilih dari list',
+                        interactiveButtons: [{
+                            name: 'single_select',
+                            buttonParamsJson: buttonParamsJson
+                        }]
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showActionStatus('List message sent successfully!', 'success');
+                } else {
+                    showActionStatus('Error: ' + (result.error || 'Failed to send list message'), 'error');
+                }
+            } catch (error) {
+                showActionStatus('Error: ' + error.message, 'error');
+            }
         }
     }
 

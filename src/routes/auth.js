@@ -2,21 +2,31 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config/index.js';
 import User from '../models/User.js';
+import { redirectIfAuthenticated } from '../middleware/auth.js';
 
 const router = Router();
 
+// Cookie options
+const cookieOptions = {
+    httpOnly: true,
+    secure: config.node_env === 'production',
+    sameSite: 'lax',
+    maxAge: config.session.maxAge,
+    signed: true
+};
+
 // Login page
-router.get('/login', (req, res) => {
+router.get('/login', redirectIfAuthenticated, (req, res) => {
     res.render('login', { error: null });
 });
 
 // Register page
-router.get('/register', (req, res) => {
+router.get('/register', redirectIfAuthenticated, (req, res) => {
     res.render('register', { error: null, success: null });
 });
 
 // Handle registration
-router.post('/register', async (req, res) => {
+router.post('/register', redirectIfAuthenticated, async (req, res) => {
     const { name, email, password, confirmPassword } = req.body;
     
     // Validation
@@ -71,11 +81,7 @@ router.post('/register', async (req, res) => {
             { expiresIn: '24h' }
         );
 
-        res.cookie('auth-token', token, {
-            httpOnly: true,
-            secure: config.node_env === 'production',
-            maxAge: config.session.maxAge,
-        });
+        res.cookie('auth-token', token, cookieOptions);
 
         return res.redirect('/dashboard');
 
@@ -89,9 +95,13 @@ router.post('/register', async (req, res) => {
 });
 
 // Handle login
-router.post('/login', async (req, res) => {
+router.post('/login', redirectIfAuthenticated, async (req, res) => {
     const { email, password } = req.body;
     
+    if (!email || !password) {
+        return res.render('login', { error: 'Email and password are required' });
+    }
+
     try {
         const user = await User.findOne({ email });
         if (!user) {
@@ -110,11 +120,7 @@ router.post('/login', async (req, res) => {
             { expiresIn: '24h' }
         );
 
-        res.cookie('auth-token', token, {
-            httpOnly: true,
-            secure: config.node_env === 'production',
-            maxAge: config.session.maxAge,
-        });
+        res.cookie('auth-token', token, cookieOptions);
 
         res.redirect('/dashboard');
     } catch (error) {
@@ -125,7 +131,10 @@ router.post('/login', async (req, res) => {
 
 // Handle logout
 router.post('/logout-user', (req, res) => {
-    res.clearCookie('auth-token');
+    res.clearCookie('auth-token', {
+        ...cookieOptions,
+        maxAge: 0
+    });
     res.redirect('/login');
 });
 
