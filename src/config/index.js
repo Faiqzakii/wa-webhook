@@ -31,9 +31,9 @@ export const config = {
     upload: {
         allowedExtensions: ['.vcf', '.csv'],
         allowedMimeTypes: [
-            'text/vcard', 
-            'text/x-vcard', 
-            'text/csv', 
+            'text/vcard',
+            'text/x-vcard',
+            'text/csv',
             'application/vnd.ms-excel'
         ],
     },
@@ -45,6 +45,12 @@ export const config = {
         enableCaching: runtime.isBun,
         useNativeModules: runtime.isBun,
         optimizedJSON: runtime.isBun
+    },
+    // Single-session mode: lock WhatsApp to one user ID
+    // Set DEFAULT_USER_ID in .env to match your MongoDB user _id
+    // Remove or leave empty to allow multi-tenant (all auth_info folders loaded)
+    singleSession: {
+        defaultUserId: process.env.DEFAULT_USER_ID || null
     }
 };
 
@@ -52,7 +58,7 @@ export const config = {
 export function validateConfig() {
     const required = ['MONGODB_URI'];
     const missing = required.filter(key => !process.env[key]);
-    
+
     if (missing.length > 0) {
         // Fallback for local development if not provided
         if (config.node_env === 'development') {
@@ -61,7 +67,7 @@ export function validateConfig() {
             throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
         }
     }
-    
+
     // Log runtime information
     console.log(`🚀 Running on ${config.runtime.name} runtime`);
     if (config.runtime.isBun) {

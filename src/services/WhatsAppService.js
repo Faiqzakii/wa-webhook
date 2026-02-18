@@ -15,6 +15,10 @@ import MessageService from './MessageService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// --- QR Reconnect limits ---
+const MAX_QR_RETRIES = 3;              // Stop after 3 failed QR cycles
+const BASE_RECONNECT_DELAY_MS = 3000;  // 3s, doubles each retry
+
 class WhatsAppService {
     constructor(io) {
         this.io = io;
@@ -80,7 +84,9 @@ class WhatsAppService {
             state: 'disconnected',
             qr: null,
             startTime: null,
-            keepAliveTimer: null
+            keepAliveTimer: null,
+            qrRetryCount: 0,
+            qrFailed: false
         };
 
         const sock = makeWASocket({
@@ -154,6 +160,8 @@ class WhatsAppService {
             session.isConnected = true;
             session.state = 'connected';
             session.qr = null;
+            session.qrRetryCount = 0;  // Reset retry counter on successful connection
+            session.qrFailed = false;
             // Set start time only if not already set or if reconnecting from disconnected state
             if (!session.startTime) {
                 session.startTime = Date.now();
@@ -199,12 +207,38 @@ class WhatsAppService {
                 }
             }
 
-            // Reconnect if not a logout
-            if (shouldReconnect) {
-                const delay = statusCode === DisconnectReason.restartRequired ? 0 : 3000;
-                console.log(`Reconnecting for user ${userId} in ${delay}ms...`);
+            // Check if this is a QR timeout (status 515 or "QR refs attempts ended")
+            const isQrTimeout = statusCode === 515 ||
+                (reason && reason.includes('QR refs attempts ended'));
+
+            if (isQrTimeout) {
+                session.qrRetryCount = (session.qrRetryCount || 0) + 1;
+                console.log(`QR timeout for user ${userId} (attempt ${session.qrRetryCount}/${MAX_QR_RETRIES})`);
+
+                if (session.qrRetryCount >= MAX_QR_RETRIES) {
+                    console.log(`Max QR retries reached for user ${userId}. Stopping reconnect. User must re-initiate manually.`);
+                    session.qrFailed = true;
+                    this.io.to(userId).emit('connection_status', {
+                        status: 'qr_timeout',
+                        message: 'QR code expired. Please reconnect manually.'
+                    });
+                    if (this.webhookService && this.appSettings.webhook_toggle_connection !== 'false') {
+                        this.webhookService.send('connection_status', { userId, status: 'qr_timeout' });
+                    }
+                    return; // Do NOT reconnect
+                }
+            }
+
+            // Reconnect if not a logout and not QR-failed
+            if (shouldReconnect && !session.qrFailed) {
+                // Exponential backoff: 3s -> 6s -> 12s -> ...
+                const retryCount = session.qrRetryCount || 0;
+                const delay = statusCode === DisconnectReason.restartRequired
+                    ? 0
+                    : BASE_RECONNECT_DELAY_MS * Math.pow(2, retryCount);
+                console.log(`Reconnecting for user ${userId} in ${delay}ms (retry #${retryCount})...`);
                 setTimeout(() => this.createSession(userId), delay);
-            } else {
+            } else if (!shouldReconnect) {
                 console.log(`Skipping reconnect for user ${userId} due to intentional logout.`);
             }
         }
@@ -454,6 +488,20 @@ class WhatsAppService {
             const authRoot = join(__dirname, '../../auth_info_baileys');
             if (!existsSync(authRoot)) return;
 
+            // Single-session mode: only load the configured user
+            const defaultUserId = config.singleSession?.defaultUserId;
+            if (defaultUserId) {
+                const userAuthDir = join(authRoot, String(defaultUserId));
+                if (existsSync(userAuthDir)) {
+                    console.log(`[Single-session] Preloading WhatsApp session for user: ${defaultUserId}`);
+                    await this.ensureSession(defaultUserId);
+                } else {
+                    console.log(`[Single-session] No existing auth for user ${defaultUserId}, will create on first connect`);
+                }
+                return;
+            }
+
+            // Multi-tenant mode: load all existing sessions
             const userDirs = readdirSync(authRoot, { withFileTypes: true })
                 .filter(dirent => dirent.isDirectory())
                 .map(dirent => dirent.name);

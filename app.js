@@ -16,9 +16,9 @@ import { initializeDatabase } from './src/config/database.js';
 
 // Runtime detection
 const runtime = {
-  isBun: typeof Bun !== 'undefined',
-  isNode: typeof process !== 'undefined' && process.versions && process.versions.node,
-  name: typeof Bun !== 'undefined' ? 'bun' : 'node'
+    isBun: typeof Bun !== 'undefined',
+    isNode: typeof process !== 'undefined' && process.versions && process.versions.node,
+    name: typeof Bun !== 'undefined' ? 'bun' : 'node'
 };
 
 // Import services
@@ -40,6 +40,9 @@ import scheduledMessagesRoutes from './src/routes/scheduledMessages.js';
 
 // Import utilities
 import { info, error as _error, warn } from './src/utils/logger.js';
+
+// Import middleware
+import { rateLimiter, record404 } from './src/middleware/rateLimiter.js';
 
 class Application {
     constructor() {
@@ -65,16 +68,16 @@ class Application {
 
             // Setup Express app
             this.setupExpress();
-            
+
             // Setup Socket.IO
             this.setupSocketIO();
-            
+
             // Setup WhatsApp service
             await this.setupWhatsAppService();
-            
+
             // Setup routes
             this.setupRoutes();
-            
+
             // Setup error handling
             this.setupErrorHandling();
 
@@ -97,7 +100,10 @@ class Application {
         const publicDir = expressStatic(join(__dirname, 'public'));
         this.app.use(publicDir);
         this.app.use(cors());
-        
+
+        // Rate limiter & scanner protection (before everything else)
+        this.app.use(rateLimiter);
+
         // Custom JSON parser with better error handling
         this.app.use(json({
             verify: (req, res, buf, encoding) => {
@@ -109,17 +115,20 @@ class Application {
                 }
             }
         }));
-        
+
         this.app.use(urlencoded({ extended: true }));
         this.app.use(cookieParser(config.session.secret));
 
-        // Request logging middleware
+        // Request logging middleware (skip static assets & noisy paths)
         this.app.use((req, res, next) => {
-            info(`${req.method} ${req.path}`, {
-                ip: req.ip,
-                userAgent: req.get('User-Agent'),
-                runtime: runtime.name
-            });
+            const skip = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|map)$/i.test(req.path);
+            if (!skip) {
+                info(`${req.method} ${req.path}`, {
+                    ip: req.ip,
+                    userAgent: req.get('User-Agent'),
+                    runtime: runtime.name
+                });
+            }
             next();
         });
 
@@ -161,10 +170,10 @@ class Application {
      */
     async setupWhatsAppService() {
         this.whatsappService = new WhatsAppService(this.io);
-        
+
         // Load settings from database
         await this.whatsappService.loadSettings();
-        
+
         // Make whatsapp service available to routes
         this.app.set('whatsappService', this.whatsappService);
 
@@ -192,28 +201,28 @@ class Application {
     setupRoutes() {
         // Authentication routes
         this.app.use('/', authRoutes);
-        
+
         // Main application routes
         this.app.use('/', appRoutes);
-        
+
         // WhatsApp API routes
         this.app.use('/', whatsappRoutes);
-        
+
         // Contact management routes (Disabled)
         // this.app.use('/contacts', contactRoutes);
-        
+
         // Auto-reply routes
         this.app.use('/auto-reply', autoReplyRoutes);
-        
+
         // API key management routes
         this.app.use('/api-keys', apiKeyRoutes);
-        
+
         // Settings routes
         this.app.use('/settings', settingsRoutes);
-        
+
         // User management routes
         this.app.use('/users', userRoutes);
-        
+
         // Scheduled messages routes
         this.app.use('/scheduled-messages', scheduledMessagesRoutes);
 
@@ -226,8 +235,10 @@ class Application {
     setupErrorHandling() {
         // 404 handler
         this.app.use((req, res) => {
-            warn(`404 - Page not found: ${req.path}`);
-            res.status(404).render('error', { 
+            const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+            record404(ip);
+            warn(`404 - Page not found: ${req.path}`, { ip });
+            res.status(404).render('error', {
                 error: 'Page not found',
                 message: 'The page you are looking for does not exist.'
             });
@@ -236,42 +247,42 @@ class Application {
         // Global error handler
         this.app.use((err, req, res, next) => {
             _error('Unhandled error', err);
-            
+
             // Handle JSON parsing errors specifically
             if (err.type === 'entity.parse.failed' && err.body && req.rawBody) {
                 warn('JSON parse error detected, attempting to fix backticks in message');
-                
+
                 try {
                     // Fix backticks in the raw body
                     const fixedBody = req.rawBody.replace(/`([^`]*)`/g, '"$1"');
                     const parsedBody = JSON.parse(fixedBody);
-                    
+
                     // Store the fixed body for the route to use
                     req.body = parsedBody;
-                    
+
                     // Log the fix
                     info('Successfully fixed JSON with backticks', {
                         original: req.rawBody.substring(0, 200) + '...',
                         fixed: fixedBody.substring(0, 200) + '...'
                     });
-                    
+
                     // Continue to the route handler
                     return next();
                 } catch (fixError) {
                     _error('Failed to fix JSON parsing error', fixError);
                 }
             }
-            
+
             const statusCode = err.statusCode || 500;
-            const message = config.node_env === 'production' 
-                ? 'Something went wrong' 
+            const message = config.node_env === 'production'
+                ? 'Something went wrong'
                 : err.message;
 
             // Return JSON error for API endpoints
             if (req.path.startsWith('/api/') || req.path.includes('/send-message') || req.path.includes('/send-bulk')) {
                 return res.status(statusCode).json({
                     error: 'request_error',
-                    message: err.type === 'entity.parse.failed' 
+                    message: err.type === 'entity.parse.failed'
                         ? 'Invalid JSON format. Please check for unescaped backticks or quotes in your message.'
                         : message,
                     details: config.node_env !== 'production' ? err.stack : undefined
@@ -302,7 +313,7 @@ class Application {
             // Start server
             this.server.listen(config.port, '0.0.0.0', () => {
                 info(`WhatsApp service running on port ${config.port}`);
-                info(`Server started successfully on ${runtime.name} runtime`, { 
+                info(`Server started successfully on ${runtime.name} runtime`, {
                     port: config.port,
                     runtime: runtime.name,
                     optimizations: runtime.isBun ? 'enabled' : 'disabled'
@@ -324,12 +335,12 @@ class Application {
      */
     async shutdown() {
         info('Shutting down server...');
-        
+
         // Stop scheduler
         if (this.schedulerService) {
             this.schedulerService.stop();
         }
-        
+
         // Close server
         this.server.close(() => {
             info('Server shut down successfully');
@@ -346,7 +357,7 @@ if (!process.env.JEST_WORKER_ID) {
     // Handle graceful shutdown
     process.on('SIGTERM', () => appInstance.shutdown());
     process.on('SIGINT', () => appInstance.shutdown());
-    
+
     // Start the application
     appInstance.start().catch(error => {
         console.error('Failed to start application:', error);
