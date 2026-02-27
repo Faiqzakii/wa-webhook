@@ -152,6 +152,10 @@ router.post('/reset-session', isAuthenticated, async (req, res) => {
         const userId = getEffectiveUserId(req);
         const whatsappService = req.app.get('whatsappService');
         await whatsappService.logout(userId);
+
+        // Wait briefly to ensure file system cleanup is complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         await whatsappService.ensureSession(userId);
         res.json({ success: true, message: 'Sesi telah direset' });
     } catch (error) {
