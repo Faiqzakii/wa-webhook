@@ -193,7 +193,11 @@ class WhatsAppService {
             if (session.keepAliveTimer) {
                 clearInterval(session.keepAliveTimer);
             }
-            this.sessions.delete(userId);
+
+            // Protect against race condition: only delete if this session is still the active one
+            if (this.sessions.get(userId) === session) {
+                this.sessions.delete(userId);
+            }
 
             // 405 usually means the session is invalid or unlinked from the phone
             // If loggedOut (401), user explicitly logged out from device.
@@ -205,8 +209,14 @@ class WhatsAppService {
             if (isInvalidSession) {
                 console.log(`Intentional logout or invalid session (status: ${statusCode}) detected for user ${userId}; clearing session.`);
                 try {
-                    if (existsSync(authDir)) {
-                        rmSync(authDir, { recursive: true, force: true });
+                    // Only remove directory if THIS session is still the active one or if no session exists for this user
+                    // This prevents deleting the authDir of a newly created replacement session
+                    if (this.sessions.get(userId) === session || !this.sessions.has(userId)) {
+                        if (existsSync(authDir)) {
+                            rmSync(authDir, { recursive: true, force: true });
+                        }
+                    } else {
+                        console.log(`Skipping authDir removal for user ${userId} because a new session is already active.`);
                     }
                 } catch (error) {
                     console.error('Error removing auth directory:', error);
@@ -241,7 +251,7 @@ class WhatsAppService {
 
                 // If the session was invalidated (405), reconnect instantly to show a new QR code.
                 if (statusCode === 405 || statusCode === DisconnectReason.restartRequired) {
-                    delay = 0;
+                    delay = 2000; // Small delay instead of 0 to avoid rate limits
                     session.reconnectRetryCount = 0; // reset retry counter for fresh QR
                 } else {
                     // Exponential backoff
@@ -253,7 +263,12 @@ class WhatsAppService {
                 }
 
                 console.log(`Reconnecting for user ${userId} in ${delay}ms (retry #${session.reconnectRetryCount})...`);
-                setTimeout(() => this.createSession(userId), delay);
+                setTimeout(() => {
+                    // Only recreate if another session hasn't been created in the meantime
+                    if (!this.sessions.has(userId)) {
+                        this.createSession(userId);
+                    }
+                }, delay);
             } else if (!shouldReconnect) {
                 console.log(`Skipping reconnect for user ${userId} due to intentional logout.`);
             }
