@@ -92,7 +92,7 @@ class WhatsAppService {
         const sock = makeWASocket({
             auth: state,
             printQRInTerminal: false,
-            browser: ['Mac OS', 'Safari', '17.2.1'],
+            browser: ['Ubuntu', 'Chrome', '20.0.04'],
             keepAliveIntervalMs: config.whatsapp.keepAliveIntervalMs,
             markOnlineOnConnect: config.whatsapp.markOnlineOnConnect,
             // Add some timeout settings
@@ -249,9 +249,9 @@ class WhatsAppService {
             if (shouldReconnect && !session.qrFailed) {
                 let delay = 0;
 
-                // If the session was invalidated (405), reconnect instantly to show a new QR code.
-                if (statusCode === 405 || statusCode === DisconnectReason.restartRequired) {
-                    delay = 2000; // Small delay instead of 0 to avoid rate limits
+                // If the session requires restart, reconnect instantly.
+                if (statusCode === DisconnectReason.restartRequired) {
+                    delay = 2000;
                     session.reconnectRetryCount = 0; // reset retry counter for fresh QR
                 } else {
                     // Exponential backoff
@@ -477,6 +477,12 @@ class WhatsAppService {
             await session.sock.logout();
         } catch (error) {
             console.error('Logout error:', error);
+        }
+
+        try {
+            if (session.sock) session.sock.end(undefined);
+        } catch (error) {
+            console.error('Socket end error:', error);
         }
 
         if (session.keepAliveTimer) {
