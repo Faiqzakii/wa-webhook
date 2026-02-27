@@ -196,10 +196,13 @@ class WhatsAppService {
             this.sessions.delete(userId);
 
             // 405 usually means the session is invalid or unlinked from the phone
-            const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 405;
-            const shouldReconnect = !isLoggedOut;
+            // If loggedOut (401), user explicitly logged out from device.
+            const isInvalidSession = statusCode === DisconnectReason.loggedOut || statusCode === 405;
 
-            if (isLoggedOut) {
+            // Only stop reconnect loops for intentional logouts (401). If 405 occurs, we still want to generate a new QR immediately.
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+            if (isInvalidSession) {
                 console.log(`Intentional logout or invalid session (status: ${statusCode}) detected for user ${userId}; clearing session.`);
                 try {
                     if (existsSync(authDir)) {
@@ -234,21 +237,25 @@ class WhatsAppService {
 
             // Reconnect if not a logout and not QR-failed
             if (shouldReconnect && !session.qrFailed) {
-                // Exponential backoff
-                session.reconnectRetryCount = (session.reconnectRetryCount || 0) + 1;
-                let delay = BASE_RECONNECT_DELAY_MS * Math.pow(2, session.reconnectRetryCount - 1);
+                let delay = 0;
 
-                // Cap delay at 60 seconds to avoid ridiculously long wait times
-                if (delay > 60000) delay = 60000;
-
-                if (statusCode === DisconnectReason.restartRequired) {
+                // If the session was invalidated (405), reconnect instantly to show a new QR code.
+                if (statusCode === 405 || statusCode === DisconnectReason.restartRequired) {
                     delay = 0;
+                    session.reconnectRetryCount = 0; // reset retry counter for fresh QR
+                } else {
+                    // Exponential backoff
+                    session.reconnectRetryCount = (session.reconnectRetryCount || 0) + 1;
+                    delay = BASE_RECONNECT_DELAY_MS * Math.pow(2, session.reconnectRetryCount - 1);
+
+                    // Cap delay at 60 seconds to avoid ridiculously long wait times
+                    if (delay > 60000) delay = 60000;
                 }
 
                 console.log(`Reconnecting for user ${userId} in ${delay}ms (retry #${session.reconnectRetryCount})...`);
                 setTimeout(() => this.createSession(userId), delay);
             } else if (!shouldReconnect) {
-                console.log(`Skipping reconnect for user ${userId} due to invalid session or intentional logout.`);
+                console.log(`Skipping reconnect for user ${userId} due to intentional logout.`);
             }
         }
     }
