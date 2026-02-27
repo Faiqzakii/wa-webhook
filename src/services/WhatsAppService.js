@@ -1,4 +1,4 @@
-import { default as makeWASocket, DisconnectReason, useMultiFileAuthState, generateWAMessageFromContent, proto } from '@whiskeysockets/baileys';
+import { default as makeWASocket, DisconnectReason, useMultiFileAuthState, generateWAMessageFromContent, proto, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const buttonsWarpper = require('buttons-warpper');
@@ -77,6 +77,9 @@ class WhatsAppService {
         const userIdStr = String(userId);
         const authDir = join(__dirname, '../../auth_info_baileys', userIdStr);
         const { state, saveCreds } = await useMultiFileAuthState(authDir);
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+
+        console.log(`[WhatsAppService] Using WA Web version: ${version.join('.')}, isLatest: ${isLatest}`);
 
         const session = {
             sock: null,
@@ -90,6 +93,7 @@ class WhatsAppService {
         };
 
         const sock = makeWASocket({
+            version,
             auth: state,
             printQRInTerminal: false,
             browser: ['Ubuntu', 'Chrome', '20.0.04'],
