@@ -394,7 +394,7 @@
 
         if (!phoneNumber) return;
         const finalPhone = phoneNumber.startsWith('08') ? phoneNumber.replace(/^08/, '628') : phoneNumber;
-        
+
         // Ask user to choose message type
         const { value: messageType } = await Swal.fire({
             title: 'Pilih Tipe Pesan',
@@ -503,8 +503,8 @@
             showActionStatus('Sending button message...', 'info');
 
             const interactiveButtons = [
-                { 
-                    name: 'quick_reply', 
+                {
+                    name: 'quick_reply',
                     buttonParamsJson: JSON.stringify({
                         display_text: formValues.btn1,
                         id: 'btn_1'
@@ -512,8 +512,8 @@
                 }
             ];
             if (formValues.btn2) {
-                interactiveButtons.push({ 
-                    name: 'quick_reply', 
+                interactiveButtons.push({
+                    name: 'quick_reply',
                     buttonParamsJson: JSON.stringify({
                         display_text: formValues.btn2,
                         id: 'btn_2'
@@ -521,8 +521,8 @@
                 });
             }
             if (formValues.btn3) {
-                interactiveButtons.push({ 
-                    name: 'quick_reply', 
+                interactiveButtons.push({
+                    name: 'quick_reply',
                     buttonParamsJson: JSON.stringify({
                         display_text: formValues.btn3,
                         id: 'btn_3'
@@ -618,17 +618,17 @@
             showActionStatus('Sending list message...', 'info');
 
             const rows = [
-                { 
+                {
                     header: formValues.opt1Title,
-                    title: formValues.opt1Title, 
+                    title: formValues.opt1Title,
                     description: formValues.opt1Desc || '',
                     id: 'opt_1'
                 }
             ];
             if (formValues.opt2Title) {
-                rows.push({ 
+                rows.push({
                     header: formValues.opt2Title,
-                    title: formValues.opt2Title, 
+                    title: formValues.opt2Title,
                     description: formValues.opt2Desc || '',
                     id: 'opt_2'
                 });
@@ -781,6 +781,7 @@
                 if (!result.isConfirmed) return;
 
                 try {
+                    console.log('Reset sesi diminta');
                     showActionStatus('Mereset sesi...', 'info');
                     const resp = await fetch('/reset-session', { method: 'POST' });
                     const json = await resp.json();
