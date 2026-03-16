@@ -39,7 +39,7 @@ import userRoutes from './src/routes/users.js';
 import scheduledMessagesRoutes from './src/routes/scheduledMessages.js';
 
 // Import utilities
-import { info, error as _error, warn } from './src/utils/logger.js';
+import { info, error as _error, warn, isLogLevelEnabled } from './src/utils/logger.js';
 
 // Import middleware
 import { rateLimiter, record404 } from './src/middleware/rateLimiter.js';
@@ -122,7 +122,7 @@ class Application {
         // Request logging middleware (skip static assets & noisy paths)
         this.app.use((req, res, next) => {
             const skip = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|map)$/i.test(req.path);
-            if (!skip) {
+            if (!skip && isLogLevelEnabled('INFO')) {
                 info(`${req.method} ${req.path}`, {
                     ip: req.ip,
                     userAgent: req.get('User-Agent'),

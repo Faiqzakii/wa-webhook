@@ -41,6 +41,29 @@ class Logger {
         return JSON.stringify(logEntry) + '\n';
     }
 
+    static getAllowedLevels() {
+        return ['ERROR', 'WARN', 'INFO', 'DEBUG'];
+    }
+
+    static getConfiguredLevel() {
+        const rawLevel = String(process.env.LOG_LEVEL || 'warn').trim().toUpperCase();
+        const allowed = Logger.getAllowedLevels();
+        return allowed.includes(rawLevel) ? rawLevel : 'WARN';
+    }
+
+    static shouldLog(level) {
+        const order = {
+            ERROR: 0,
+            WARN: 1,
+            INFO: 2,
+            DEBUG: 3
+        };
+
+        const normalizedLevel = String(level).toUpperCase();
+        const configured = Logger.getConfiguredLevel();
+        return order[normalizedLevel] <= order[configured];
+    }
+
     writeToFile(filename, content) {
         const filePath = join(this.logDir, filename);
         
@@ -56,6 +79,7 @@ class Logger {
     }
 
     info(message, data = null) {
+        if (!Logger.shouldLog('INFO')) return;
         const logMessage = this.formatMessage('INFO', message, data);
         console.log(`[INFO] ${message}`, data || '');
         this.writeToFile('app.log', logMessage);
@@ -72,13 +96,14 @@ class Logger {
     }
 
     warn(message, data = null) {
+        if (!Logger.shouldLog('WARN')) return;
         const logMessage = this.formatMessage('WARN', message, data);
         console.warn(`[WARN] ${message}`, data || '');
         this.writeToFile('app.log', logMessage);
     }
 
     debug(message, data = null) {
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === 'development' && Logger.shouldLog('DEBUG')) {
             const logMessage = this.formatMessage('DEBUG', message, data);
             console.debug(`[DEBUG] ${message}`, data || '');
             this.writeToFile('debug.log', logMessage);
@@ -101,3 +126,11 @@ export const error = logger.error.bind(logger);
 export const warn = logger.warn.bind(logger);
 export const debug = logger.debug.bind(logger);
 export const whatsapp = logger.whatsapp.bind(logger);
+
+export function getConfiguredLogLevel() {
+    return Logger.getConfiguredLevel();
+}
+
+export function isLogLevelEnabled(level) {
+    return Logger.shouldLog(level);
+}

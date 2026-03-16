@@ -11,6 +11,7 @@ import Setting from '../models/Setting.js';
 import AutoReply from '../models/AutoReply.js';
 import Message from '../models/Message.js';
 import MessageService from './MessageService.js';
+import { createThrottledSaver } from '../utils/throttledSaver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,6 +19,7 @@ const __dirname = dirname(__filename);
 // --- QR Reconnect limits ---
 const MAX_QR_RETRIES = 3;              // Stop after 3 failed QR cycles
 const BASE_RECONNECT_DELAY_MS = 3000;  // 3s, doubles each retry
+const CREDS_SAVE_THROTTLE_MS = 3000;
 
 class WhatsAppService {
     constructor(io) {
@@ -119,6 +121,8 @@ class WhatsAppService {
      */
     setupSessionHandlers(session, userId, saveCreds, authDir) {
         const { sock } = session;
+        const credsSaver = createThrottledSaver(saveCreds, CREDS_SAVE_THROTTLE_MS);
+        session.flushCreds = credsSaver.flush;
 
         // Keep-alive timer
         session.keepAliveTimer = setInterval(async () => {
@@ -132,7 +136,9 @@ class WhatsAppService {
         }, config.whatsapp.keepAliveInterval);
 
         // Credentials update handler
-        sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', () => {
+            credsSaver.trigger();
+        });
 
         // Connection status handler
         sock.ev.on('connection.update', (update) => {
@@ -476,6 +482,14 @@ class WhatsAppService {
         const userIdStr = String(userId);
         const session = this.sessions.get(userIdStr);
         if (!session) return;
+
+        if (typeof session.flushCreds === 'function') {
+            try {
+                await session.flushCreds();
+            } catch (error) {
+                console.error('Failed to flush credentials before logout:', error);
+            }
+        }
 
         try {
             await session.sock.logout();
